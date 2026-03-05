@@ -10,9 +10,14 @@ import { existsSync } from "fs";
 const execFileAsync = promisify(execFile);
 
 function getTypstPath(): string {
+  // Prefer the binary downloaded by scripts/install-typst.mjs
+  const projectBin = join(process.cwd(), "bin", "typst");
+  if (existsSync(projectBin)) return projectBin;
+
   const homeDir = process.env.HOME || process.env.USERPROFILE || "";
   const localBin = join(homeDir, ".local", "bin", "typst");
   if (existsSync(localBin)) return localBin;
+
   return "typst";
 }
 
