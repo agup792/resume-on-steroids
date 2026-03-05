@@ -51,8 +51,10 @@ async function callAzureChat(
   const toolArgs = (toolCall as Record<string, unknown>).args ?? (toolCall as Record<string, unknown>).input;
   const args = toolArgs as Record<string, string>;
   if (toolCall.toolName === "update_resume") {
+    const { sanitizeTypstSource } = await import("@/lib/typst");
     let code = args.typst_code;
     code = code.replace(/^```typst\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
+    code = sanitizeTypstSource(code);
     return { action: "edit" as const, typstSource: code, summary: args.summary };
   } else {
     return { action: "clarify" as const, question: args.question };

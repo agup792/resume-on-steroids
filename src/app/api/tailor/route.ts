@@ -77,11 +77,13 @@ export async function POST(request: NextRequest) {
           ],
         });
 
+        const { sanitizeTypstSource } = await import("@/lib/typst");
         let tailoredSource = tailorResult.text;
         tailoredSource = tailoredSource
           .replace(/^```typst\n?/, "")
           .replace(/^```\n?/, "")
           .replace(/\n?```$/, "");
+        tailoredSource = sanitizeTypstSource(tailoredSource);
 
         const variantName = variantLabel.slice(0, 40);
 

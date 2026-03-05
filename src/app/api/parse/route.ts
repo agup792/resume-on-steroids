@@ -131,11 +131,13 @@ export async function POST(request: NextRequest) {
             ],
           });
 
+          const { sanitizeTypstSource } = await import("@/lib/typst");
           let typstSource = conversionResult.text;
           typstSource = typstSource
             .replace(/^```typst\n?/, "")
             .replace(/^```\n?/, "")
             .replace(/\n?```$/, "");
+          typstSource = sanitizeTypstSource(typstSource);
 
           return NextResponse.json({
             typstSource,

@@ -70,6 +70,14 @@ export async function compileTypstWithRetry(
   throw new Error(lastError || "Typst compilation failed after retries");
 }
 
+/**
+ * Escape unescaped $ signs that precede digits (currency like $120K, $5M).
+ * This is the only realistic $ usage in resumes; avoids breaking Typst math mode.
+ */
+export function sanitizeTypstSource(source: string): string {
+  return source.replace(/(?<!\\)\$(?=\d)/g, "\\$");
+}
+
 export function pdfBase64ToUint8Array(base64: string): Uint8Array {
   const binaryStr = atob(base64);
   const bytes = new Uint8Array(binaryStr.length);

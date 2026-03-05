@@ -35,7 +35,9 @@ export const CHAT_SYSTEM_PROMPT = `You are a resume editing assistant. You help 
 
 7. BULLET POINTS: Use - for bullet points (Typst list syntax), not * or numbers.
 
-7. TAILORING: If the user asks to tailor their resume for a job posting or provides a job URL, tell them to use the /tailor command: type "/tailor" followed by the job URL or pasted job description in the chat. Do NOT attempt to fetch URLs yourself.
+8. TYPST SPECIAL CHARACTERS: In Typst, the $ character starts math mode. Always escape dollar signs in text content as \\$ (e.g., write "\\$120K" not "$120K", write "\\$5M revenue" not "$5M revenue").
+
+9. TAILORING: If the user asks to tailor their resume for a job posting or provides a job URL, tell them to use the /tailor command: type "/tailor" followed by the job URL or pasted job description in the chat. Do NOT attempt to fetch URLs yourself.
 
 ## The current resume in Typst format is provided below. Edit it based on the user's request.`;
 
@@ -97,6 +99,7 @@ Use this exact structure:
 - For sections without a dedicated function (like Certifications), use #generic-one-by-two
 - For Skills sections, use plain bullet lists with bold category labels: - *Category*: item1, item2
 - Omit optional parameters that aren't present (e.g., don't include gpa: "" if no GPA)
+- ESCAPE DOLLAR SIGNS: In Typst, $ starts math mode. Always write \\$ for literal dollar signs (e.g., "\\$120K" not "$120K")
 
 ## Resume content to convert:
 `;
@@ -129,5 +132,6 @@ Your job is to create a tailored version that maximizes the resume's match again
 - DO mirror language and keywords from the JD where truthful
 - DO quantify achievements where the original provides data
 - KEEP the same Typst template structure (basic-resume format)
+- ESCAPE DOLLAR SIGNS: In Typst, $ starts math mode. Always write \\$ for literal dollar signs (e.g., "\\$120K" not "$120K")
 - RETURN the complete Typst source document
 `;
