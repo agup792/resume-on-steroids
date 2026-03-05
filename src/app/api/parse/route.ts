@@ -86,58 +86,72 @@ export async function POST(request: NextRequest) {
     const hasAzure = process.env.AZURE_RESOURCE_NAME && process.env.AZURE_API_KEY;
 
     if (hasAzure) {
-      try {
-        const { generateText } = await import("ai");
-        const { getModel } = await import("@/lib/ai");
-        const { VISION_EXTRACTION_PROMPT, TYPST_CONVERSION_PROMPT } = await import("@/lib/prompts");
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const { generateText } = await import("ai");
+          const { getModel } = await import("@/lib/ai");
+          const { VISION_EXTRACTION_PROMPT, TYPST_CONVERSION_PROMPT } = await import("@/lib/prompts");
 
-        const fileBytes = await file.arrayBuffer();
-        const base64 = Buffer.from(fileBytes).toString("base64");
+          const fileBytes = await file.arrayBuffer();
+          const base64 = Buffer.from(fileBytes).toString("base64");
 
-        // Step 1: Extract content from PDF using vision
-        const extractionResult = await generateText({
-          model: getModel(),
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: VISION_EXTRACTION_PROMPT },
-                {
-                  type: "image",
-                  image: `data:application/pdf;base64,${base64}`,
-                },
-              ],
+          const extractionResult = await generateText({
+            model: getModel(),
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: VISION_EXTRACTION_PROMPT },
+                  {
+                    type: "file",
+                    data: base64,
+                    mediaType: "application/pdf",
+                  },
+                ],
+              },
+            ],
+          });
+
+          const extractedText = extractionResult.text;
+          const sectionNames = extractedText
+            .split("\n")
+            .filter((line) => /^#+\s|^[A-Z][A-Z\s&]+$/.test(line.trim()))
+            .map((line) => line.replace(/^#+\s*/, "").trim())
+            .filter((s) => s.length > 0 && s.length < 40)
+            .slice(0, 10);
+
+          const conversionResult = await generateText({
+            model: getModel(),
+            messages: [
+              {
+                role: "user",
+                content: TYPST_CONVERSION_PROMPT + "\n\n" + extractedText,
+              },
+            ],
+          });
+
+          let typstSource = conversionResult.text;
+          typstSource = typstSource
+            .replace(/^```typst\n?/, "")
+            .replace(/^```\n?/, "")
+            .replace(/\n?```$/, "");
+
+          return NextResponse.json({
+            typstSource,
+            summary: {
+              sections: sectionNames.length > 0
+                ? sectionNames
+                : ["Education", "Work Experience", "Projects", "Skills"],
             },
-          ],
-        });
-
-        // Step 2: Convert extracted content to Typst
-        const conversionResult = await generateText({
-          model: getModel(),
-          messages: [
-            {
-              role: "user",
-              content: TYPST_CONVERSION_PROMPT + "\n\n" + extractionResult.text,
-            },
-          ],
-        });
-
-        let typstSource = conversionResult.text;
-        // Strip markdown code fences if present
-        typstSource = typstSource
-          .replace(/^```typst\n?/, "")
-          .replace(/^```\n?/, "")
-          .replace(/\n?```$/, "");
-
-        return NextResponse.json({
-          typstSource,
-          summary: {
-            sections: ["Education", "Work Experience", "Projects", "Skills"],
-          },
-        });
-      } catch (aiError) {
-        console.error("Azure AI parsing failed, using sample:", aiError);
+          });
+        } catch (err) {
+          lastError = err;
+          console.error(`Azure AI parsing attempt ${attempt + 1} failed:`, err);
+          if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
+        }
       }
+      console.error("Azure AI parsing exhausted retries:", lastError);
     }
 
     // Fallback: return sample Typst (demo mode)

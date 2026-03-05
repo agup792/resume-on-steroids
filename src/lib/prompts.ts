@@ -35,6 +35,8 @@ export const CHAT_SYSTEM_PROMPT = `You are a resume editing assistant. You help 
 
 7. BULLET POINTS: Use - for bullet points (Typst list syntax), not * or numbers.
 
+7. TAILORING: If the user asks to tailor their resume for a job posting or provides a job URL, tell them to use the /tailor command: type "/tailor" followed by the job URL or pasted job description in the chat. Do NOT attempt to fetch URLs yourself.
+
 ## The current resume in Typst format is provided below. Edit it based on the user's request.`;
 
 export const VISION_EXTRACTION_PROMPT = `Extract ALL content from this resume image. Return a structured representation with exact text preserved.

@@ -4,7 +4,7 @@ import { useReducer, useState, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { appReducer, initialState, createVariant } from "@/lib/state";
 import { ChatMessage, ParsingStep } from "@/lib/types";
-import { compileTypst, pdfBase64ToUint8Array } from "@/lib/typst";
+import { compileTypst, compileTypstWithRetry, pdfBase64ToUint8Array } from "@/lib/typst";
 import LandingView from "./components/LandingView";
 import ParsingView from "./components/ParsingView";
 import MainLayout from "./components/MainLayout";
@@ -129,12 +129,25 @@ export default function Home() {
         const variant = createVariant("Original Resume", data.typstSource, "original");
 
         try {
-          const result = await compileTypst(data.typstSource);
+          const { result, fixedSource } = await compileTypstWithRetry(data.typstSource);
+          if (fixedSource) variant.typstSource = fixedSource;
           variant.compiledPdf = result.pdf;
           variant.previewImages = result.pageImages;
         } catch (compileErr) {
           console.error("Initial compilation failed:", compileErr);
         }
+
+        const sections: string[] = data.summary?.sections || [];
+        const sectionList = sections.length > 0
+          ? `\n\nDetected sections: ${sections.join(", ")}.`
+          : "";
+
+        variant.chatHistory = [{
+          id: uuidv4(),
+          role: "assistant",
+          content: `Your resume has been processed and formatted.${sectionList}\n\nI can help you edit any part — try one of the suggestions below, or ask me anything.`,
+          timestamp: new Date(),
+        }];
 
         dispatch({ type: "SET_READY", variant });
       } catch {
@@ -167,6 +180,20 @@ export default function Home() {
     async (message: string) => {
       if (!activeVariant) return;
 
+      const tailorMatch = message.match(/^\/tailor\s+(.+)/is);
+      if (tailorMatch) {
+        const input = tailorMatch[1].trim();
+        const userMsg: ChatMessage = {
+          id: uuidv4(),
+          role: "user",
+          content: message,
+          timestamp: new Date(),
+        };
+        dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: userMsg });
+        handleTailor(input);
+        return;
+      }
+
       const userMsg: ChatMessage = {
         id: uuidv4(),
         role: "user",
@@ -187,7 +214,10 @@ export default function Home() {
           }),
         });
 
-        if (!res.ok) throw new Error("Chat request failed");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || "Chat request failed");
+        }
 
         const data = await res.json();
 
@@ -196,22 +226,36 @@ export default function Home() {
 
           try {
             setIsCompiling(true);
-            const result = await compileTypst(data.typstSource);
+            const { result, fixedSource } = await compileTypstWithRetry(data.typstSource);
+
+            if (fixedSource) {
+              dispatch({ type: "UPDATE_TYPST", variantId: activeVariant.id, newSource: fixedSource });
+            }
+
             dispatch({ type: "UPDATE_PREVIEW", variantId: activeVariant.id, pdf: result.pdf, images: result.pageImages });
+
+            const assistantMsg: ChatMessage = {
+              id: uuidv4(),
+              role: "assistant",
+              content: "Done! I've updated your resume.",
+              editSummary: data.summary,
+              timestamp: new Date(),
+            };
+            dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: assistantMsg });
           } catch (compileErr) {
-            console.error("Recompile failed:", compileErr);
+            console.error("Compile failed after retries:", compileErr);
+            dispatch({ type: "UNDO", variantId: activeVariant.id });
+
+            const errorMsg: ChatMessage = {
+              id: uuidv4(),
+              role: "assistant",
+              content: "Couldn't apply that change — the updated resume had a formatting error. Your resume has been restored to its previous version. Try rephrasing your request.",
+              timestamp: new Date(),
+            };
+            dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: errorMsg });
           } finally {
             setIsCompiling(false);
           }
-
-          const assistantMsg: ChatMessage = {
-            id: uuidv4(),
-            role: "assistant",
-            content: "Done! I've updated your resume.",
-            editSummary: data.summary,
-            timestamp: new Date(),
-          };
-          dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: assistantMsg });
         } else if (data.action === "clarify") {
           const assistantMsg: ChatMessage = {
             id: uuidv4(),
@@ -222,11 +266,14 @@ export default function Home() {
           };
           dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: assistantMsg });
         }
-      } catch {
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "";
         const errorMsg: ChatMessage = {
           id: uuidv4(),
           role: "assistant",
-          content: "Something went wrong. Please try again.",
+          content: detail.includes("Azure")
+            ? "The AI service is temporarily unavailable. Please try again in a moment."
+            : "Something went wrong. Please try again.",
           timestamp: new Date(),
         };
         dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: errorMsg });
@@ -238,27 +285,32 @@ export default function Home() {
   );
 
   const handleTailor = useCallback(
-    async (jdUrl: string) => {
+    async (input: string) => {
       if (!activeVariant) return;
 
       setIsTailoring(true);
 
+      const isUrl = /^https?:\/\//i.test(input) || /^www\./i.test(input);
+
       const progressMsg: ChatMessage = {
         id: uuidv4(),
         role: "assistant",
-        content: "Starting tailoring process...\n\n1. Extracting job description...\n2. Creating scoring rubric...\n3. Tailoring your resume...\n4. Compiling preview...",
+        content: isUrl
+          ? "Starting tailoring process...\n\n1. Extracting job description from URL...\n2. Creating scoring rubric...\n3. Tailoring your resume...\n4. Compiling preview..."
+          : "Starting tailoring process...\n\n1. Analyzing job description...\n2. Creating scoring rubric...\n3. Tailoring your resume...\n4. Compiling preview...",
         timestamp: new Date(),
       };
       dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: progressMsg });
 
       try {
+        const body = isUrl
+          ? { typstSource: activeVariant.typstSource, jdUrl: input }
+          : { typstSource: activeVariant.typstSource, jdText: input };
+
         const res = await fetch("/api/tailor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            typstSource: activeVariant.typstSource,
-            jdUrl,
-          }),
+          body: JSON.stringify(body),
         });
 
         if (!res.ok) throw new Error("Tailoring failed");
@@ -276,26 +328,40 @@ export default function Home() {
           return;
         }
 
-        const newVariant = createVariant(data.variantName, data.typstSource, "tailored", jdUrl, data.rubric);
+        let finalSource = data.typstSource;
 
         try {
-          const result = await compileTypst(data.typstSource);
+          const { result, fixedSource } = await compileTypstWithRetry(data.typstSource);
+          if (fixedSource) finalSource = fixedSource;
+
+          const newVariant = createVariant(data.variantName, finalSource, "tailored", input, data.rubric);
           newVariant.compiledPdf = result.pdf;
           newVariant.previewImages = result.pageImages;
+
+          dispatch({ type: "ADD_VARIANT", variant: newVariant });
+
+          const doneMsg: ChatMessage = {
+            id: uuidv4(),
+            role: "assistant",
+            content: `Created tailored variant: "${data.variantName}". Switch to it in the left panel to review.`,
+            editSummary: "New tailored variant created",
+            timestamp: new Date(),
+          };
+          dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: doneMsg });
         } catch (compileErr) {
           console.error("Tailored variant compilation failed:", compileErr);
+
+          const newVariant = createVariant(data.variantName, finalSource, "tailored", input, data.rubric);
+          dispatch({ type: "ADD_VARIANT", variant: newVariant });
+
+          const warnMsg: ChatMessage = {
+            id: uuidv4(),
+            role: "assistant",
+            content: `Created tailored variant "${data.variantName}", but the preview couldn't be generated. The content is saved — try editing it to fix any formatting issues.`,
+            timestamp: new Date(),
+          };
+          dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: warnMsg });
         }
-
-        dispatch({ type: "ADD_VARIANT", variant: newVariant });
-
-        const doneMsg: ChatMessage = {
-          id: uuidv4(),
-          role: "assistant",
-          content: `Created tailored variant: "${data.variantName}". Switch to it in the left panel to review.`,
-          editSummary: "New tailored variant created",
-          timestamp: new Date(),
-        };
-        dispatch({ type: "ADD_CHAT_MESSAGE", variantId: activeVariant.id, message: doneMsg });
       } catch {
         const errorMsg: ChatMessage = {
           id: uuidv4(),
@@ -363,7 +429,7 @@ export default function Home() {
   const handleDownload = useCallback(() => {
     if (!activeVariant?.compiledPdf) return;
     const pdfBytes = pdfBase64ToUint8Array(activeVariant.compiledPdf);
-    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+    const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

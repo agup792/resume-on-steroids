@@ -28,10 +28,14 @@ export default function RightPanel({
 }: RightPanelProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
+    }
   }, [variant.chatHistory, isProcessing]);
 
   const handleSend = () => {
@@ -58,7 +62,7 @@ export default function RightPanel({
   };
 
   return (
-    <div className="bg-surface border-l border-border flex flex-col h-full">
+    <div className="bg-surface border-l border-border flex flex-col h-full min-h-0">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border">
         <div className="text-[13px] font-semibold">{variant.name}</div>
@@ -68,8 +72,8 @@ export default function RightPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-3">
-        {showWelcome && variant.chatHistory.length === 0 && (
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto py-3 min-h-0">
+        {variant.chatHistory.length === 0 && showWelcome && (
           <div className="px-4 py-2">
             <div className="bg-surface-alt rounded-2xl rounded-bl-sm px-4 py-3 text-[13px] leading-relaxed text-text">
               <p className="font-medium mb-2">Welcome! Your resume has been processed.</p>
@@ -89,8 +93,8 @@ export default function RightPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions */}
-      {showWelcome && variant.chatHistory.length === 0 && (
+      {/* Suggestions — show when no user messages yet */}
+      {variant.chatHistory.filter((m) => m.role === "user").length === 0 && (
         <SuggestionChips
           suggestions={INITIAL_SUGGESTIONS}
           onSelect={(s) => onSendMessage(s)}
@@ -112,7 +116,7 @@ export default function RightPanel({
             value={input}
             onChange={handleTextareaChange}
             onKeyDown={handleKeyDown}
-            placeholder={isProcessing ? "Processing..." : "Ask me to edit your resume..."}
+            placeholder={isProcessing ? "Processing..." : "Ask me to edit your resume... or /tailor <url>"}
             disabled={isProcessing}
             rows={1}
             className="flex-1 px-3 py-2 rounded-lg border border-border text-[13px] bg-surface outline-none focus:border-accent placeholder:text-text-tertiary resize-none disabled:opacity-50 disabled:cursor-not-allowed"

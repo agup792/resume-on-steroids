@@ -1,5 +1,6 @@
 "use client";
 
+import ReactMarkdown from "react-markdown";
 import { ChatMessage as ChatMessageType } from "@/lib/types";
 
 interface ChatMessageProps {
@@ -19,7 +20,13 @@ export default function ChatMessage({ message }: ChatMessageProps) {
               : "bg-surface-alt text-text rounded-bl-sm"
           }`}
         >
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <div className="chat-markdown">
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
+          )}
         </div>
 
         {message.editSummary && (

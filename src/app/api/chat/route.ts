@@ -1,5 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
 
+async function callAzureChat(
+  typstSource: string,
+  chatHistory: { role: string; content: string }[],
+  userMessage: string,
+) {
+  const { generateText, tool } = await import("ai");
+  const { z } = await import("zod");
+  const { getModel } = await import("@/lib/ai");
+  const { CHAT_SYSTEM_PROMPT } = await import("@/lib/prompts");
+
+  const messages = [
+    ...chatHistory.map((msg) => ({
+      role: msg.role as "user" | "assistant",
+      content: msg.content,
+    })),
+    { role: "user" as const, content: userMessage },
+  ];
+
+  const result = await generateText({
+    model: getModel(),
+    system: CHAT_SYSTEM_PROMPT + "\n\n## Current Typst Source:\n```typst\n" + typstSource + "\n```",
+    messages,
+    tools: {
+      update_resume: tool({
+        description: "Update the resume with edited Typst source code. Use when you have enough information to make the requested change confidently.",
+        inputSchema: z.object({
+          typst_code: z.string(),
+          summary: z.string(),
+        }),
+      }),
+      ask_clarification: tool({
+        description: "Ask a clarifying question before making changes. Use when the request is ambiguous or requires info you don't have.",
+        inputSchema: z.object({
+          question: z.string(),
+        }),
+      }),
+    },
+    toolChoice: "required",
+  });
+
+  if (!result.toolCalls || result.toolCalls.length === 0) {
+    return {
+      action: "clarify" as const,
+      question: "I'm not sure how to help with that. Could you rephrase your request?",
+    };
+  }
+
+  const toolCall = result.toolCalls[0];
+  const toolArgs = (toolCall as Record<string, unknown>).args ?? (toolCall as Record<string, unknown>).input;
+  const args = toolArgs as Record<string, string>;
+  if (toolCall.toolName === "update_resume") {
+    let code = args.typst_code;
+    code = code.replace(/^```typst\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
+    return { action: "edit" as const, typstSource: code, summary: args.summary };
+  } else {
+    return { action: "clarify" as const, question: args.question };
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { typstSource, chatHistory, userMessage } = await request.json();
@@ -11,60 +70,18 @@ export async function POST(request: NextRequest) {
     const hasAzure = process.env.AZURE_RESOURCE_NAME && process.env.AZURE_API_KEY;
 
     if (hasAzure) {
-      try {
-        const { generateText } = await import("ai");
-        const { z } = await import("zod");
-        const { getModel } = await import("@/lib/ai");
-        const { CHAT_SYSTEM_PROMPT } = await import("@/lib/prompts");
-
-        const messages = [
-          ...chatHistory.map((msg: { role: string; content: string }) => ({
-            role: msg.role as "user" | "assistant",
-            content: msg.content,
-          })),
-          { role: "user" as const, content: userMessage },
-        ];
-
-        const result = await generateText({
-          model: getModel(),
-          system: CHAT_SYSTEM_PROMPT + "\n\n## Current Typst Source:\n```typst\n" + typstSource + "\n```",
-          messages,
-          tools: {
-            update_resume: {
-              description: "Update the resume with edited Typst source code. Use when you have enough information to make the requested change confidently.",
-              parameters: z.object({
-                typst_code: z.string().describe("Complete updated Typst source"),
-                summary: z.string().describe("Brief summary of changes"),
-              }),
-            },
-            ask_clarification: {
-              description: "Ask a clarifying question before making changes. Use when the request is ambiguous or requires info you don't have.",
-              parameters: z.object({
-                question: z.string().describe("The question to ask"),
-              }),
-            },
-          },
-          toolChoice: "required",
-        });
-
-        const toolCall = result.toolCalls[0];
-        if (toolCall.toolName === "update_resume") {
-          let code = toolCall.args.typst_code;
-          code = code.replace(/^```typst\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
-          return NextResponse.json({
-            action: "edit",
-            typstSource: code,
-            summary: toolCall.args.summary,
-          });
-        } else {
-          return NextResponse.json({
-            action: "clarify",
-            question: toolCall.args.question,
-          });
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const result = await callAzureChat(typstSource, chatHistory, userMessage);
+          return NextResponse.json(result);
+        } catch (err) {
+          lastError = err;
+          console.error(`Azure AI chat attempt ${attempt + 1} failed:`, err);
+          if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
         }
-      } catch (aiError) {
-        console.error("Azure AI chat failed:", aiError);
       }
+      console.error("Azure AI chat exhausted retries:", lastError);
     }
 
     // Demo mode: simple mock responses

@@ -37,10 +37,12 @@ export default function LeftPanel({
 
       <div className="flex-1 px-2">
         {variants.map((v) => (
-          <div
+          <button
             key={v.id}
+            type="button"
             onClick={() => onSelectVariant(v.id)}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors group ${
+            aria-current={v.id === activeVariantId ? "true" : undefined}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer mb-0.5 transition-colors group text-left ${
               v.id === activeVariantId ? "bg-accent-light" : "hover:bg-surface-alt"
             }`}
           >
@@ -56,20 +58,28 @@ export default function LeftPanel({
               </div>
             </div>
             {v.metadata.type === "tailored" && (
-              <button
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDeleteVariant(v.id);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-red-500 transition-all text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.stopPropagation();
+                    onDeleteVariant(v.id);
+                  }
+                }}
+                className="opacity-0 group-hover:opacity-100 text-text-tertiary hover:text-red-500 transition-all text-xs cursor-pointer"
                 title="Delete variant"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
-              </button>
+              </span>
             )}
-          </div>
+          </button>
         ))}
       </div>
 
@@ -82,7 +92,7 @@ export default function LeftPanel({
             type="text"
             value={jdUrl}
             onChange={(e) => setJdUrl(e.target.value)}
-            placeholder="Paste job URL..."
+            placeholder="Paste job URL or description..."
             className="flex-1 px-2.5 py-1.5 rounded-md border border-border text-[12px] bg-surface outline-none focus:border-accent placeholder:text-text-tertiary"
             disabled={isTailoring}
             onKeyDown={(e) => e.key === "Enter" && handleTailor()}

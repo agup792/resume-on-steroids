@@ -33,7 +33,7 @@ export default function MainLayout({
   isCompiling,
 }: MainLayoutProps) {
   return (
-    <div className="grid grid-cols-[220px_1fr_360px] grid-rows-[52px_1fr] h-screen">
+    <div className="grid grid-cols-[220px_1fr_360px] grid-rows-[52px_1fr] h-screen overflow-hidden">
       {/* Header */}
       <header className="col-span-3 flex items-center justify-between px-5 bg-surface border-b border-border">
         <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">

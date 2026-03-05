@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/azure": "^3.0.42",
     "ai": "^6.0.116",
     "cheerio": "^1.2.0",
@@ -16,6 +17,7 @@
     "pdfjs-dist": "^5.5.207",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
     "typst": "^0.10.0-8",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"

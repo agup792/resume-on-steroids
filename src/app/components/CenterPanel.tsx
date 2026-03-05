@@ -6,10 +6,10 @@ interface CenterPanelProps {
   variantType: "original" | "tailored";
 }
 
-export default function CenterPanel({ previewImages, isLoading, variantType }: CenterPanelProps) {
+export default function CenterPanel({ previewImages = [], isLoading, variantType }: CenterPanelProps) {
   return (
     <div
-      className={`bg-bg relative overflow-auto ${
+      className={`bg-bg relative overflow-auto min-h-0 ${
         variantType === "tailored" ? "ring-2 ring-inset ring-success/20" : ""
       }`}
       style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "24px" }}
