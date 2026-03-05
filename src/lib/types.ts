@@ -9,7 +9,8 @@ export interface ResumeVariant {
   name: string;
   typstSource: string;
   typstHistory: string[];
-  compiledPdf: Uint8Array | null;
+  compiledPdf: string | null;       // base64-encoded PDF for download
+  previewImages: string[];           // data:image/png;base64,... for preview
   chatHistory: ChatMessage[];
   metadata: {
     type: "original" | "tailored";

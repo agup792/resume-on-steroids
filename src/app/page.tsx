@@ -4,6 +4,7 @@ import { useReducer, useState, useCallback } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { appReducer, initialState, createVariant } from "@/lib/state";
 import { ChatMessage, ParsingStep } from "@/lib/types";
+import { compileTypst, pdfBase64ToUint8Array } from "@/lib/typst";
 import LandingView from "./components/LandingView";
 import ParsingView from "./components/ParsingView";
 import MainLayout from "./components/MainLayout";
@@ -126,9 +127,17 @@ export default function Home() {
         await new Promise((r) => setTimeout(r, 500));
 
         const variant = createVariant("Original Resume", data.typstSource, "original");
+
+        try {
+          const result = await compileTypst(data.typstSource);
+          variant.compiledPdf = result.pdf;
+          variant.previewImages = result.pageImages;
+        } catch (compileErr) {
+          console.error("Initial compilation failed:", compileErr);
+        }
+
         dispatch({ type: "SET_READY", variant });
       } catch {
-        // Fallback: use sample Typst for demo if API fails
         const steps: ParsingStep[] = [
           { label: "Resume uploaded", status: "done" },
           { label: "Content extracted", status: "done" },
@@ -139,6 +148,15 @@ export default function Home() {
         await new Promise((r) => setTimeout(r, 800));
 
         const variant = createVariant("Original Resume", SAMPLE_TYPST, "original");
+
+        try {
+          const result = await compileTypst(SAMPLE_TYPST);
+          variant.compiledPdf = result.pdf;
+          variant.previewImages = result.pageImages;
+        } catch (compileErr) {
+          console.error("Sample compilation failed:", compileErr);
+        }
+
         dispatch({ type: "SET_READY", variant });
       }
     },
@@ -175,6 +193,16 @@ export default function Home() {
 
         if (data.action === "edit") {
           dispatch({ type: "UPDATE_TYPST", variantId: activeVariant.id, newSource: data.typstSource });
+
+          try {
+            setIsCompiling(true);
+            const result = await compileTypst(data.typstSource);
+            dispatch({ type: "UPDATE_PREVIEW", variantId: activeVariant.id, pdf: result.pdf, images: result.pageImages });
+          } catch (compileErr) {
+            console.error("Recompile failed:", compileErr);
+          } finally {
+            setIsCompiling(false);
+          }
 
           const assistantMsg: ChatMessage = {
             id: uuidv4(),
@@ -249,6 +277,15 @@ export default function Home() {
         }
 
         const newVariant = createVariant(data.variantName, data.typstSource, "tailored", jdUrl, data.rubric);
+
+        try {
+          const result = await compileTypst(data.typstSource);
+          newVariant.compiledPdf = result.pdf;
+          newVariant.previewImages = result.pageImages;
+        } catch (compileErr) {
+          console.error("Tailored variant compilation failed:", compileErr);
+        }
+
         dispatch({ type: "ADD_VARIANT", variant: newVariant });
 
         const doneMsg: ChatMessage = {
@@ -274,9 +311,59 @@ export default function Home() {
     [activeVariant]
   );
 
+  const handleDemo = useCallback(async () => {
+    dispatch({ type: "SET_PARSING" });
+    setParsingFileName("sample-resume.pdf");
+    setParsingSteps([
+      { label: "Loading sample resume...", status: "active" },
+      { label: "Converting to formatted resume", status: "pending" },
+      { label: "Compiling preview", status: "pending" },
+      { label: "Ready", status: "pending" },
+    ]);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    setParsingSteps([
+      { label: "Sample resume loaded", status: "done" },
+      { label: "Converting to formatted resume...", status: "active" },
+      { label: "Compiling preview", status: "pending" },
+      { label: "Ready", status: "pending" },
+    ]);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    setParsingSteps([
+      { label: "Sample resume loaded", status: "done" },
+      { label: "Converted to formatted resume", status: "done" },
+      { label: "Compiling preview...", status: "active" },
+      { label: "Ready", status: "pending" },
+    ]);
+
+    const variant = createVariant("Original Resume", SAMPLE_TYPST, "original");
+
+    try {
+      const result = await compileTypst(SAMPLE_TYPST);
+      variant.compiledPdf = result.pdf;
+      variant.previewImages = result.pageImages;
+    } catch (err) {
+      console.error("Demo compilation failed:", err);
+    }
+
+    setParsingSteps([
+      { label: "Sample resume loaded", status: "done" },
+      { label: "Converted to formatted resume", status: "done" },
+      { label: "Preview compiled", status: "done" },
+      { label: "Ready!", status: "done" },
+    ]);
+
+    await new Promise((r) => setTimeout(r, 300));
+    dispatch({ type: "SET_READY", variant });
+  }, []);
+
   const handleDownload = useCallback(() => {
     if (!activeVariant?.compiledPdf) return;
-    const blob = new Blob([activeVariant.compiledPdf], { type: "application/pdf" });
+    const pdfBytes = pdfBase64ToUint8Array(activeVariant.compiledPdf);
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -290,7 +377,7 @@ export default function Home() {
   }, []);
 
   if (state.status === "landing") {
-    return <LandingView onFileSelected={handleFileSelected} />;
+    return <LandingView onFileSelected={handleFileSelected} onDemo={handleDemo} />;
   }
 
   if (state.status === "parsing") {
@@ -298,7 +385,7 @@ export default function Home() {
   }
 
   if (!activeVariant) {
-    return <LandingView onFileSelected={handleFileSelected} />;
+    return <LandingView onFileSelected={handleFileSelected} onDemo={handleDemo} />;
   }
 
   return (

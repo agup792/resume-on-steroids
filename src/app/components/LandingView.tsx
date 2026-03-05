@@ -4,9 +4,10 @@ import { useCallback } from "react";
 
 interface LandingViewProps {
   onFileSelected: (file: File) => void;
+  onDemo?: () => void;
 }
 
-export default function LandingView({ onFileSelected }: LandingViewProps) {
+export default function LandingView({ onFileSelected, onDemo }: LandingViewProps) {
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
@@ -79,6 +80,15 @@ export default function LandingView({ onFileSelected }: LandingViewProps) {
             or click to browse · PDF only
           </p>
         </label>
+
+        {onDemo && (
+          <button
+            onClick={onDemo}
+            className="mt-6 text-sm text-accent hover:text-accent-dark underline underline-offset-4 cursor-pointer"
+          >
+            or try with a sample resume
+          </button>
+        )}
 
         <div className="flex gap-8 mt-12 text-left">
           <div className="flex-1">

@@ -8,7 +8,7 @@ export type AppAction =
   | { type: "ADD_VARIANT"; variant: ResumeVariant }
   | { type: "DELETE_VARIANT"; variantId: string }
   | { type: "UPDATE_TYPST"; variantId: string; newSource: string }
-  | { type: "UPDATE_PDF"; variantId: string; pdf: Uint8Array }
+  | { type: "UPDATE_PREVIEW"; variantId: string; pdf: string; images: string[] }
   | { type: "ADD_CHAT_MESSAGE"; variantId: string; message: ChatMessage }
   | { type: "UNDO"; variantId: string }
   | { type: "RESET" };
@@ -68,12 +68,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ),
       };
 
-    case "UPDATE_PDF":
+    case "UPDATE_PREVIEW":
       return {
         ...state,
         variants: state.variants.map((v) =>
           v.id === action.variantId
-            ? { ...v, compiledPdf: action.pdf }
+            ? { ...v, compiledPdf: action.pdf, previewImages: action.images }
             : v
         ),
       };
@@ -124,6 +124,7 @@ export function createVariant(
     typstSource,
     typstHistory: [],
     compiledPdf: null,
+    previewImages: [],
     chatHistory: [],
     metadata: {
       type,

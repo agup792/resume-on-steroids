@@ -69,7 +69,7 @@ export default function MainLayout({
 
       {/* Center Panel */}
       <CenterPanel
-        pdfData={activeVariant.compiledPdf}
+        previewImages={activeVariant.previewImages}
         isLoading={isCompiling || isTailoring}
         variantType={activeVariant.metadata.type}
       />
