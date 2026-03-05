@@ -46,13 +46,15 @@ function main() {
 
   mkdirSync(BIN_DIR, { recursive: true });
 
-  const stripComponents = 1;
   try {
+    const tmpDir = `${BIN_DIR}/.typst-tmp`;
+    execSync(`mkdir -p "${tmpDir}"`, { stdio: "inherit" });
     execSync(
-      `curl -fsSL "${url}" | tar -xJ --strip-components=${stripComponents} -C "${BIN_DIR}" --include="*/typst"`,
+      `curl -fsSL "${url}" -o "${tmpDir}/typst.tar.xz" && tar -xJf "${tmpDir}/typst.tar.xz" -C "${tmpDir}" && cp "${tmpDir}"/typst-*/typst "${BIN_DIR}/typst"`,
       { stdio: "inherit" },
     );
     chmodSync(TYPST_BIN, 0o755);
+    execSync(`rm -rf "${tmpDir}"`, { stdio: "inherit" });
     console.log(`[install-typst] Typst ${TYPST_VERSION} installed to ${TYPST_BIN}`);
   } catch (err) {
     console.error(`[install-typst] Failed to install Typst: ${err.message}`);
